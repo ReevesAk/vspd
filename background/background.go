@@ -19,13 +19,11 @@ import (
 )
 
 var (
-	ctx            context.Context
 	db             *database.VspDatabase
 	dcrdRPC        rpc.DcrdConnect
 	walletRPC      rpc.WalletConnect
 	netParams      *chaincfg.Params
 	notifierClosed chan struct{}
-	shutdownWg     *sync.WaitGroup
 )
 
 type NotificationHandler struct{}
@@ -64,10 +62,9 @@ func (n *NotificationHandler) Notify(method string, params json.RawMessage) erro
 // blockconnected notification is received from dcrd.
 func blockConnected() {
 
-	funcName := "blockConnected"
+	const funcName = "blockConnected"
 
-	shutdownWg.Add(1)
-	defer shutdownWg.Done()
+	ctx := context.Background()
 
 	dcrdClient, err := dcrdRPC.Client(ctx, netParams)
 	if err != nil {
@@ -279,10 +276,10 @@ func (n *NotificationHandler) Close() error {
 	return nil
 }
 
-func connectNotifier(dcrdWithNotifs rpc.DcrdConnect) error {
+func connectNotifier(shutdownCtx context.Context, dcrdWithNotifs rpc.DcrdConnect) error {
 	notifierClosed = make(chan struct{})
 
-	dcrdClient, err := dcrdWithNotifs.Client(ctx, netParams)
+	dcrdClient, err := dcrdWithNotifs.Client(shutdownCtx, netParams)
 	if err != nil {
 		return err
 	}
@@ -297,7 +294,11 @@ func connectNotifier(dcrdWithNotifs rpc.DcrdConnect) error {
 	// Wait until context is done (vspd is shutting down), or until the
 	// notifier is closed.
 	select {
-	case <-ctx.Done():
+	case <-shutdownCtx.Done():
+		// A shutdown signal has been received - close the client with the
+		// notification handler to prevent further notifications from being
+		// received.
+		dcrdWithNotifs.Close()
 		return nil
 	case <-notifierClosed:
 		log.Warnf("dcrd notifier closed")
@@ -305,15 +306,13 @@ func connectNotifier(dcrdWithNotifs rpc.DcrdConnect) error {
 	}
 }
 
-func Start(c context.Context, wg *sync.WaitGroup, vdb *database.VspDatabase, drpc rpc.DcrdConnect,
+func Start(shutdownCtx context.Context, wg *sync.WaitGroup, vdb *database.VspDatabase, drpc rpc.DcrdConnect,
 	dcrdWithNotif rpc.DcrdConnect, wrpc rpc.WalletConnect, p *chaincfg.Params) {
 
-	ctx = c
 	db = vdb
 	dcrdRPC = drpc
 	walletRPC = wrpc
 	netParams = p
-	shutdownWg = wg
 
 	// Run the block connected handler now to catch up with any blocks mined
 	// while vspd was shut down.
@@ -324,24 +323,30 @@ func Start(c context.Context, wg *sync.WaitGroup, vdb *database.VspDatabase, drp
 	checkWalletConsistency()
 
 	// Run voting wallet consistency check periodically.
+	wg.Add(1)
 	go func() {
 		ticker := time.NewTicker(consistencyInterval)
+	consistencyLoop:
 		for {
 			select {
-			case <-ctx.Done():
+			case <-shutdownCtx.Done():
 				ticker.Stop()
-				return
+				break consistencyLoop
 			case <-ticker.C:
 				checkWalletConsistency()
 			}
 		}
+		log.Debugf("Consistency checker stopped")
+		wg.Done()
 	}()
 
 	// Loop forever attempting to create a connection to the dcrd server for
 	// notifications.
+	wg.Add(1)
 	go func() {
+	notifierLoop:
 		for {
-			err := connectNotifier(dcrdWithNotif)
+			err := connectNotifier(shutdownCtx, dcrdWithNotif)
 			if err != nil {
 				log.Errorf("dcrd connect error: %v", err)
 			}
@@ -349,12 +354,14 @@ func Start(c context.Context, wg *sync.WaitGroup, vdb *database.VspDatabase, drp
 			// If context is done (vspd is shutting down), return,
 			// otherwise wait 15 seconds and try to reconnect.
 			select {
-			case <-ctx.Done():
-				return
+			case <-shutdownCtx.Done():
+				break notifierLoop
 			case <-time.After(15 * time.Second):
 			}
 
 		}
+		log.Debugf("Notification connector stopped")
+		wg.Done()
 	}()
 }
 
@@ -363,9 +370,11 @@ func Start(c context.Context, wg *sync.WaitGroup, vdb *database.VspDatabase, drp
 // choices.
 func checkWalletConsistency() {
 
-	funcName := "checkWalletConsistency"
+	const funcName = "checkWalletConsistency"
 
 	log.Info("Checking voting wallet consistency")
+
+	ctx := context.Background()
 
 	dcrdClient, err := dcrdRPC.Client(ctx, netParams)
 	if err != nil {

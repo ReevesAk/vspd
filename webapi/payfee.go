@@ -14,16 +14,23 @@ import (
 	"github.com/decred/vspd/database"
 	"github.com/decred/vspd/rpc"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+)
+
+const (
+	// Assume the treasury is enabled
+	isTreasuryEnabled = true
 )
 
 // payFee is the handler for "POST /api/v3/payfee".
 func payFee(c *gin.Context) {
-	funcName := "payFee"
+	const funcName = "payFee"
 
 	// Get values which have been added to context by middleware.
 	ticket := c.MustGet("Ticket").(database.Ticket)
 	knownTicket := c.MustGet("KnownTicket").(bool)
 	dcrdClient := c.MustGet("DcrdClient").(*rpc.DcrdRPC)
+	reqBytes := c.MustGet("RequestBytes").([]byte)
 
 	if cfg.VspClosed {
 		sendError(errVspClosed, c)
@@ -37,7 +44,7 @@ func payFee(c *gin.Context) {
 	}
 
 	var request payFeeRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := binding.JSON.BindBody(reqBytes, &request); err != nil {
 		log.Warnf("%s: Bad request (clientIP=%s): %v", funcName, c.ClientIP(), err)
 		sendErrorWithMsg(err.Error(), errBadRequest, c)
 		return
@@ -112,7 +119,7 @@ func payFee(c *gin.Context) {
 		return
 	}
 
-	err = blockchain.CheckTransactionSanity(feeTx, cfg.NetParams)
+	err = blockchain.CheckTransactionSanity(feeTx, cfg.NetParams, isTreasuryEnabled)
 	if err != nil {
 		log.Warnf("%s: Fee tx failed sanity check (clientIP=%s, ticketHash=%s): %v",
 			funcName, c.ClientIP(), ticket.Hash, err)
@@ -134,7 +141,7 @@ findAddress:
 			return
 		}
 		_, addresses, _, err := txscript.ExtractPkScriptAddrs(scriptVersion,
-			txOut.PkScript, cfg.NetParams)
+			txOut.PkScript, cfg.NetParams, isTreasuryEnabled)
 		if err != nil {
 			log.Errorf("%s: Extract PK error (clientIP=%s, ticketHash=%s): %v",
 				funcName, c.ClientIP(), ticket.Hash, err)
@@ -175,7 +182,7 @@ findAddress:
 	}
 
 	// Get ticket voting address.
-	_, votingAddr, _, err := txscript.ExtractPkScriptAddrs(scriptVersion, ticketTx.TxOut[0].PkScript, cfg.NetParams)
+	_, votingAddr, _, err := txscript.ExtractPkScriptAddrs(scriptVersion, ticketTx.TxOut[0].PkScript, cfg.NetParams, isTreasuryEnabled)
 	if err != nil {
 		log.Errorf("%s: ExtractPK error (ticketHash=%s): %v", funcName, ticket.Hash, err)
 		sendError(errInternalError, c)
@@ -257,8 +264,22 @@ findAddress:
 			funcName, ticket.Hash, ticket.FeeTxHash)
 	}
 
-	sendJSONResponse(payFeeResponse{
+	// Send success response to client.
+	resp, respSig := sendJSONResponse(payFeeResponse{
 		Timestamp: time.Now().Unix(),
 		Request:   request,
 	}, c)
+
+	// Store a record of the vote choice change.
+	err = db.SaveVoteChange(
+		ticket.Hash,
+		database.VoteChangeRecord{
+			Request:           string(reqBytes),
+			RequestSignature:  c.GetHeader("VSP-Client-Signature"),
+			Response:          resp,
+			ResponseSignature: respSig,
+		})
+	if err != nil {
+		log.Errorf("%s: Failed to store vote change record (ticketHash=%s): %v", err)
+	}
 }

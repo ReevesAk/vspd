@@ -13,6 +13,7 @@ import (
 	"github.com/decred/vspd/database"
 	"github.com/decred/vspd/rpc"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 // addrMtx protects getNewFeeAddress.
@@ -64,13 +65,14 @@ func getCurrentFee(dcrdClient *rpc.DcrdRPC) (dcrutil.Amount, error) {
 // feeAddress is the handler for "POST /api/v3/feeaddress".
 func feeAddress(c *gin.Context) {
 
-	funcName := "feeAddress"
+	const funcName = "feeAddress"
 
 	// Get values which have been added to context by middleware.
 	ticket := c.MustGet("Ticket").(database.Ticket)
 	knownTicket := c.MustGet("KnownTicket").(bool)
 	commitmentAddress := c.MustGet("CommitmentAddress").(string)
 	dcrdClient := c.MustGet("DcrdClient").(*rpc.DcrdRPC)
+	reqBytes := c.MustGet("RequestBytes").([]byte)
 
 	if cfg.VspClosed {
 		sendError(errVspClosed, c)
@@ -78,7 +80,7 @@ func feeAddress(c *gin.Context) {
 	}
 
 	var request feeAddressRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := binding.JSON.BindBody(reqBytes, &request); err != nil {
 		log.Warnf("%s: Bad request (clientIP=%s): %v", funcName, c.ClientIP(), err)
 		sendErrorWithMsg(err.Error(), errBadRequest, c)
 		return
