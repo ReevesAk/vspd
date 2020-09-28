@@ -26,7 +26,7 @@ import (
 var (
 	defaultListen         = ":8800"
 	defaultLogLevel       = "debug"
-	defaultVSPFee         = 3.0
+	defaultVSPFee         = 7.5
 	defaultNetwork        = "testnet"
 	defaultHomeDir        = dcrutil.AppDataDir("vspd", false)
 	defaultConfigFilename = "vspd.conf"
@@ -44,7 +44,7 @@ type config struct {
 	Listen          string        `long:"listen" ini-name:"listen" description:"The ip:port to listen for API requests."`
 	LogLevel        string        `long:"loglevel" ini-name:"loglevel" description:"Logging level." choice:"trace" choice:"debug" choice:"info" choice:"warn" choice:"error" choice:"critical"`
 	Network         string        `long:"network" ini-name:"network" description:"Decred network to use." choice:"testnet" choice:"mainnet" choice:"simnet"`
-	VSPFee          float64       `long:"vspfee" ini-name:"vspfee" description:"Fee percentage charged for VSP use. eg. 2.0 (2%), 0.5 (0.5%)."`
+	VSPFee          float64       `long:"vspfee" ini-name:"vspfee" description:"Flat fee charged for VSP use. i.e 7.5."`
 	DcrdHost        string        `long:"dcrdhost" ini-name:"dcrdhost" description:"The ip:port to establish a JSON-RPC connection with dcrd. Should be the same host where vspd is running."`
 	DcrdUser        string        `long:"dcrduser" ini-name:"dcrduser" description:"Username for dcrd RPC connections."`
 	DcrdPass        string        `long:"dcrdpass" ini-name:"dcrdpass" description:"Password for dcrd RPC connections."`
@@ -272,7 +272,7 @@ func loadConfig() (*config, error) {
 
 	// Ensure the fee percentage is valid per txrules.
 	if !txrules.ValidPoolFeeRate(cfg.VSPFee) {
-		return nil, errors.New("invalid vspfee - should be greater than 0.01 and less than 100.0")
+		return nil, errors.New("invalid vspfee - should be 7.5")
 	}
 
 	// Ensure the support email address is set.
