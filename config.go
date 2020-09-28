@@ -29,8 +29,12 @@ var (
 	defaultVSPFee         = 3.0
 	defaultNetwork        = "testnet"
 	defaultHomeDir        = dcrutil.AppDataDir("vspd", false)
+	defaultLogDirName     = "logs"
+	defaultLogDir         = filepath.Join(defaultHomeDir, defaultLogDirName)
 	defaultConfigFilename = "vspd.conf"
 	defaultConfigFile     = filepath.Join(defaultHomeDir, defaultConfigFilename)
+	defaultDataName       = "data"
+	defaultDataDir        = filepath.Join(defaultHomeDir, defaultDataName)
 	defaultDcrdHost       = "127.0.0.1"
 	defaultWalletHost     = "127.0.0.1"
 	defaultWebServerDebug = false
@@ -49,6 +53,8 @@ type config struct {
 	DcrdUser        string        `long:"dcrduser" ini-name:"dcrduser" description:"Username for dcrd RPC connections."`
 	DcrdPass        string        `long:"dcrdpass" ini-name:"dcrdpass" description:"Password for dcrd RPC connections."`
 	DcrdCert        string        `long:"dcrdcert" ini-name:"dcrdcert" description:"The dcrd RPC certificate file."`
+	LogDir          string        `long:"logdir" description:"Directory to log output."`
+	DataDir         string        `long:"datadir" description:"Directory to store data"`
 	WalletHosts     string        `long:"wallethost" ini-name:"wallethost" description:"Comma separated list of ip:port to establish JSON-RPC connections with voting dcrwallet."`
 	WalletUsers     string        `long:"walletuser" ini-name:"walletuser" description:"Comma separated list of username for dcrwallet RPC connections."`
 	WalletPasswords string        `long:"walletpass" ini-name:"walletpass" description:"Comma separated list of password for dcrwallet RPC connections."`
@@ -164,6 +170,8 @@ func loadConfig() (*config, error) {
 		LogLevel:       defaultLogLevel,
 		Network:        defaultNetwork,
 		VSPFee:         defaultVSPFee,
+		LogDir:         defaultLogDir,
+		DataDir:        defaultDataDir,
 		HomeDir:        defaultHomeDir,
 		ConfigFile:     defaultConfigFile,
 		DcrdHost:       defaultDcrdHost,
@@ -373,14 +381,16 @@ func loadConfig() (*config, error) {
 	cfg.DcrdHost = normalizeAddress(cfg.DcrdHost, cfg.netParams.DcrdRPCServerPort)
 
 	// Create the data directory.
-	dataDir := filepath.Join(cfg.HomeDir, "data", cfg.netParams.Name)
+	cfg.DataDir = cleanAndExpandPath(cfg.DataDir)
+	dataDir := filepath.Join(cfg.HomeDir, defaultDataName, cfg.netParams.Name)
 	err = os.MkdirAll(dataDir, 0700)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %v", err)
 	}
 
 	// Initialize loggers and log rotation.
-	logDir := filepath.Join(cfg.HomeDir, "logs", cfg.netParams.Name)
+	cfg.LogDir = cleanAndExpandPath(cfg.LogDir)
+	logDir := filepath.Join(cfg.HomeDir, defaultLogDirName, cfg.netParams.Name)
 	initLogRotator(filepath.Join(logDir, "vspd.log"))
 	setLogLevels(cfg.LogLevel)
 
