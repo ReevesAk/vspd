@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"decred.org/dcrwallet/wallet/txrules"
 	"github.com/decred/dcrd/dcrutil/v3"
+	dcrdtypes "github.com/decred/dcrd/rpc/jsonrpc/types/v2"
 	"github.com/decred/vspd/database"
 	"github.com/decred/vspd/rpc"
 	"github.com/gin-gonic/gin"
@@ -41,25 +41,14 @@ func getNewFeeAddress(db *database.VspDatabase, addrGen *addressGenerator) (stri
 }
 
 func getCurrentFee(dcrdClient *rpc.DcrdRPC) (dcrutil.Amount, error) {
-	bestBlock, err := dcrdClient.GetBestBlockHeader()
-	if err != nil {
-		return 0, err
-	}
-	sDiff, err := dcrutil.NewAmount(bestBlock.SBits)
-	if err != nil {
-		return 0, err
-	}
-	relayFee, err := dcrutil.NewAmount(relayFee)
+
+	var ticketInfo dcrdtypes.InfoChainResult
+	relayFee, err := dcrutil.NewAmount(ticketInfo.RelayFee)
 	if err != nil {
 		return 0, err
 	}
 
-	fee := txrules.StakePoolTicketFee(sDiff, relayFee, int32(bestBlock.Height),
-		cfg.VSPFee, cfg.NetParams)
-	if err != nil {
-		return 0, err
-	}
-	return fee, nil
+	return relayFee, nil
 }
 
 // feeAddress is the handler for "POST /api/v3/feeaddress".
