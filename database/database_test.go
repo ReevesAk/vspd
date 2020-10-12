@@ -35,6 +35,7 @@ func TestDatabase(t *testing.T) {
 		"testAddressIndex":      testAddressIndex,
 		"testDeleteTicket":      testDeleteTicket,
 		"testVoteChangeRecords": testVoteChangeRecords,
+		"testCountTickets":		 testCountTickets,
 	}
 
 	for testName, test := range tests {
@@ -62,5 +63,3 @@ func TestDatabase(t *testing.T) {
 		os.Remove(backupDb)
 	}
 }
-
-// TODO: Add tests for CountTickets.

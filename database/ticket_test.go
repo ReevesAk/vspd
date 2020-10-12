@@ -164,6 +164,25 @@ func testUpdateTicket(t *testing.T) {
 	}
 }
 
+func testCountTickets(t *testing.T)  {
+	ticket := exampleTicket()
+
+
+	// Retrieve data from database.
+	retrieved, found, err := db.GetTicketByHash(ticket.Hash)
+	if err != nil {
+		t.Fatalf("error retrieving tickets by ticket hash: %v", err)
+	}
+
+	if !found {
+		t.Fatal("expected found==false")
+	}
+
+	if retrieved.Outcome != ticket.Outcome {
+		t.Fatal("retrieved ticket counts didn't maych expected value")
+	}
+}
+
 func testTicketFeeExpired(t *testing.T) {
 	ticket := exampleTicket()
 
