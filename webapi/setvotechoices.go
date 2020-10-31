@@ -118,4 +118,18 @@ func setVoteChoices(c *gin.Context) {
 	if err != nil {
 		log.Errorf("%s: Failed to store vote change record (ticketHash=%s): %v", err)
 	}
+
+	var clientInfo = setVoteChoicesResponse{
+		Timestamp: time.Now().Unix(),
+		Request: request,
+	}
+
+	_, err = db.GetVoteChanges(ticket.Hash)
+	if err != nil {
+		log.Errorf("%s: Failed to retreive vote change record (tixketHash=%s): %v", err)
+	}
+
+	if clientInfo.Timestamp > clientInfo.Request.Timestamp {
+		log.Error("timesatmp is older than request")
+	}
 }
